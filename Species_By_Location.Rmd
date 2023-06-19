@@ -1,0 +1,129 @@
+---
+title: "Summarize Data by Species"
+subtitle: "Has there been a change in the timing of flowering time in the tropics"
+author: "Sky and Kim"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, echo = FALSE, include = FALSE}
+
+# Change identifiers to your system and file naming. 
+user <- "C:/Users/skyla" # computer user name
+chapter <- "/OneDrive/Desktop/ChapterOne"
+location <- "Cameroon"
+chapter.fp <- paste0(user, chapter)
+chapter.fp
+```
+
+```{r Set CRAN, echo = FALSE, include = FALSE}
+# Global settings
+local({r <- getOption("repos")
+       r["CRAN"] <- "http://cran.r-project.org"
+       options(repos = r)})
+
+
+# install.packages("tidyverse")
+#install.packages("knitr")
+#install.packages("kableExtra")
+library(tidyverse)
+library("knitr")
+library("kableExtra")
+```
+
+```{r, echo = FALSE, include = FALSE}
+# Set path names for folders
+
+# Define folder for data
+Data.fp <- file.path(paste0(chapter.fp, "/Data"))
+if (!dir.exists(Data.fp)) dir.create(Data.fp)
+
+#Define foulder for results
+Results.fp <- file.path(paste0(chapter.fp, "/Results"))
+if (!dir.exists(Results.fp)) dir.create(Results.fp)
+
+list.files(chapter.fp)
+
+```
+
+
+
+
+
+```{r, include = TRUE, fig.height = 5, fig.show = "hold", out.width = "50%"}
+#### Load the data file
+
+# Read in data file
+data_csv <- read.csv(paste0(Data.fp, "/", location, ".csv"), 
+                    header = TRUE)
+colnames(data_csv)
+
+data_csv <- data_csv %>%
+  dplyr::rename("species" = "gbif.canonicalName")
+head(data_csv)
+```
+
+```{r, include = TRUE, fig.height = 5, fig.show = "hold", out.width = "50%"}
+#### Load the data file
+
+sp_summary <- data_csv %>% 
+  group_by(species) %>%
+  summarise(count = n())
+sp_summary
+
+```
+
+```{r, include = TRUE, fig.height = 5, fig.show = "hold", out.width = "50%"}
+#### filter out less than 30 species
+
+sp_sum_df_30 <- sp_summary %>%
+  as.data.frame() %>%
+  dplyr::filter(count >= 30)
+
+num_30 <- length(rownames(sp_sum_df_30))
+
+sp_sum_df_30
+
+write.csv(x = sp_sum_df_30,
+          file = paste0(Results.fp, "/", location, "_30_species.csv"))
+
+list.files(Results.fp)
+```
+
+There are `r num_30` species greater than or equal to 30 in the `r location` data set.
+
+
+### Count for each species in the `r location`` data set.
+`r kable(sp_sum_df_30) %>% kable_styling(full_width = F, position = "left")`
+
+```{r, include = TRUE}
+Species_list <- sp_sum_df_30$species
+
+# Create empty data frame with 0 rows and 3 columns
+df <- data.frame(matrix(ncol = 3, nrow = num_30))
+
+# Provide column names
+colnames(df) <- c("species", "pValue", "R2")
+
+# Run a linear regression
+for (i in 1:length(Species_list)) {
+  df$species[[i]] <- Species_list[[i]]
+  species_data <- data_csv %>% dplyr::filter(species == Species_list[i])
+  sum <- summary(lm(Day.of.the.year ~ Year, data = species_data))
+  df$pValue[[i]] <- round(sum$coefficients[8], 4)
+  df$R2[[i]] <- round(sum$r.squared, 4)
+}
+
+# Sort the species by p value, lowest to highest
+df <- df %>%
+  dplyr::arrange(pValue)
+
+write.csv(x = df,
+          file = paste0(Results.fp, "/", location, "_LinearRegression_species.csv"))
+
+```
+
+### Linear regression of Flowering Day by Year
+`r kable(df) %>% kable_styling(full_width = F, position = "left")`

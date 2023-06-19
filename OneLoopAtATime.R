@@ -45,7 +45,7 @@ day2circ-leap <- function(day_of_year) {
 
 traceplots_list <- list()
 finalplot_list <- list()
-coef_list <- list()
+coef_list <- data.frame()
 preds_list <- list()
 plant_list <- list()
 sdat_list <- list()
@@ -53,7 +53,12 @@ sdat_list <- list()
 
   df <- read.csv("Amazon.csv")
   df$species <- factor(df$species)
-  spec <- levels(df$species)
+  index <- df %>% group_by(species) %>%
+    summarise(n=n()) %>% filter(n>15)
+  df <- df %>% filter(species %in% index$species) %>% mutate(Day.of.the.year = as.numeric(Day.of.the.year))
+  
+  spec <- unique(as.character(df$species))
+  
   for(j in 1:length(spec)){
     plant2 <- na.omit(df[df$species == spec[j],])
     year <- plant2$Year
@@ -136,12 +141,85 @@ sdat_list <- list()
     }
     results <- circ2day(results) #transform to day of year
     preds <- data.frame(year, year_s, results)
-    preds_list[[j]] <- preds
+    preds_list[[spec[j]]] <- preds
     rm(year, year_s, n, results, mu, ppd) #clean up
-    
-    coef_list[[j]] <- coef(fit)
+    coef_spec <- as.data.frame(coef(fit))
+    coef_spec$Species <- spec[j]
+    coef_spec$Effects <- rownames(coef_spec)
+    coef_list <- rbind(coef_list,coef_spec)
+    preds$Species <- spec[j]
   }
+  
+# Convert slope to days shifted
+  
+  df2 <- preds_list
+  maxx <- as.data.frame(unlist(lapply(lapply(df2,"[", , "mnmu"),max)))
+  names(maxx) <- "maxs"
+  maxx$Species <- rownames(maxx)
+  minn <- as.data.frame(unlist(lapply(lapply(df2,"[", , "mnmu"),min)))
+  names(minn) <- "mins"
+  minn$Species <- rownames(minn)
+  newdf <- left_join(maxx,minn)
+  
+  newdf$DaysChange <- (newdf$maxs - newdf$mins)
 
+  
+  Days <- newdf$DaysChange
+  mean(Days)
+  
+### Test Direction Shift ###
+  
+  a <- coef_list[which(coef_list$Effects=="year_s"),]
+  a$sign <- "pos"
+  a[which(a$Estimate<0),"sign"] <- "neg"
+  print(a$Estimate)
+  b <- a$Estimate
+  length(b[b>0]) #pos
+  length(b[b<0]) #neg
+  length(b[b==0])
+  
+
+pos <- b[b>0]
+neg <- b[b<0]
+absneg <- abs(b[b<0])
+
+var(pos)
+var(neg)
+
+qqnorm(b)
+qqline(b,col="red")
+
+# Welch / pos and neg diff
+t.test(pos,neg, var.equal = F)
+
+# Welch / pos and neg diff
+t.test(pos,absneg, var.equal = F)
+
+# One sample / diff from 0
+t.test(b,mu=0)
+
+# One sample / diff from 0
+t.test(Days,mu=0)
+
+### Plots ###
+
+# Slope Plot
+  ggplot() +
+    geom_point(data=a, mapping=aes(x=Estimate, y=Species)) +
+    geom_errorbarh(data=a, mapping=aes(xmin= Estimate-SD , xmax= Estimate+SD, y= Species)) +
+    labs(title= "INPA Reserves",
+         x ="Circular Slope", y = "Species") 
+ 
+
+# Date Plot  
+  
+  ggplot() +
+    geom_errorbarh(data=newdf, mapping=aes(xmin= mins , xmax= maxs, y= Species)) +
+    xlim(0,365) +
+    labs(title= "INPA Reserves",
+         x ="Julian Date", y = "Species") 
+  
+# Species Plot  
 for(i in 1:length(spec)){
     finalplot_list[[i]] <- preds_list[[i]] %>%
       ggplot() +
@@ -153,8 +231,10 @@ for(i in 1:length(spec)){
       geom_line(mapping=aes(x=year, y=ppdhi95), lty=2) + 
       labs(title= spec[i],
            x ="Year", y = "Julian Date")
+    ggsave(filename = paste("C:/Users/skly5321/Downloads/ChapterOne/ChapterOne/Plots/Amazon_All_Plots/",spec[i],"_plot.png",sep=""),device = "png")
 }
 
 print(finalplot_list)
 
+print(coef_list)
 
